@@ -3,9 +3,13 @@ require('dotenv').config();
 const express = require('express');
 const app = express();
 
-// Day 5 imports
+// ===== DAY 5: DB + Model =====
 const connectDB = require('./db');
 const User = require('./models/User');
+
+// ===== DAY 6: Auth Libraries =====
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
 const port = process.env.PORT || 5000;
 const apiKey = process.env.API_KEY;
@@ -16,10 +20,10 @@ app.use((req, res, next) => {
   next();
 });
 
-// Middleware for JSON body (Day 4)
+// JSON Middleware
 app.use(express.json());
 
-// Connect Database (Day 5)
+// Connect DB
 connectDB();
 
 /* ========== DAY 2: Basic Routes ========== */
@@ -63,7 +67,7 @@ app.get('/api/users', (req, res) => {
 
 /* ========== DAY 4: Environment + Advanced APIs ========== */
 
-// Status route (env check)
+// Status route
 app.get('/status', (req, res) => {
   res.json({
     message: "System Online",
@@ -76,7 +80,7 @@ app.get('/status', (req, res) => {
 const userController = require('./controllers/userController');
 app.get('/api/users-controller', userController.getUsers);
 
-// Register route (basic)
+// Basic Register
 app.post('/api/register', (req, res) => {
   const { username, password } = req.body;
 
@@ -101,6 +105,52 @@ app.post('/register-db', async (req, res) => {
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
+});
+
+/* ========== DAY 6: Login + JWT ========== */
+
+app.post('/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // Check user
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(400).json({ msg: "User does not exist" });
+    }
+
+    // Compare password
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ msg: "Invalid credentials" });
+    }
+
+    // Create token
+    const token = jwt.sign(
+      { id: user._id },
+      "my_secret_key",
+      { expiresIn: "1h" }
+    );
+
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        username: user.username
+      }
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ========== DAY 6: Protected Route ========== */
+
+const auth = require('./middleware/auth');
+
+app.get('/dashboard', auth, (req, res) => {
+  res.send("Welcome to the Private Dashboard");
 });
 
 /* ========== SERVER START ========== */
