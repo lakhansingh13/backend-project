@@ -3,6 +3,9 @@ require('dotenv').config();
 const express = require('express');
 const app = express();
 
+// =====Day 8 : Data Relationship ====
+const Post = require('./models/Post');
+
 // ===== DAY 5: DB + Model =====
 const connectDB = require('./db');
 const User = require('./models/User');
@@ -151,6 +154,35 @@ const auth = require('./middleware/auth');
 
 app.get('/dashboard', auth, (req, res) => {
   res.send("Welcome to the Private Dashboard");
+});
+
+/* ========== DAY 8: Create Post (with User link) ========== */
+
+app.post('/api/posts', auth, async (req, res) => {
+  try {
+    const newPost = new Post({
+      title: req.body.title,
+      content: req.body.content,
+      author: req.user.id // from JWT
+    });
+
+    const post = await newPost.save();
+    res.json(post);
+
+  } catch (err) {
+    res.status(500).send('Server Error');
+  }
+});
+
+/* ========== DAY 8: Get Posts with Author Details ========== */
+
+app.get('/api/posts', async (req, res) => {
+  try {
+    const posts = await Post.find().populate('author', ['username', 'email']);
+    res.json(posts);
+  } catch (err) {
+    res.status(500).send('Server Error');
+  }
 });
 
 /* ========== SERVER START ========== */
