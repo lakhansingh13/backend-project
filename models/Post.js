@@ -15,4 +15,13 @@ const PostSchema = new mongoose.Schema({
   date: { type: Date, default: Date.now }
 });
 
+// ===== DAY 9: Virtual Field (Summary) =====
+PostSchema.virtual('summary').get(function () {
+  return this.content.substring(0, 20) + '...';
+});
+
+// Enable virtuals in JSON
+PostSchema.set('toJSON', { virtuals: true });
+
+// Export model
 module.exports = mongoose.model('Post', PostSchema);

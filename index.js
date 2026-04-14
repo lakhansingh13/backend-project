@@ -176,10 +176,35 @@ app.post('/api/posts', auth, async (req, res) => {
 
 /* ========== DAY 8: Get Posts with Author Details ========== */
 
-app.get('/api/posts', async (req, res) => {
+/*app.get('/api/posts', async (req, res) => {
   try {
     const posts = await Post.find().populate('author', ['username', 'email']);
     res.json(posts);
+  } catch (err) {
+    res.status(500).send('Server Error');
+  }
+}); */
+
+/* ========== DAY 9: Updated Paginated Posts ========== */
+
+app.get('/api/posts', async (req, res) => {
+  try {
+    // Step 1: Get page & limit from URL
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 2;
+
+    // Step 2: Calculate skip
+    const skip = (page - 1) * limit;
+
+    // Step 3: Fetch data
+    const posts = await Post.find()
+      .populate('author', ['username', 'email'])
+      .skip(skip)
+      .limit(limit);
+
+    // Step 4: Send response
+    res.json(posts);
+
   } catch (err) {
     res.status(500).send('Server Error');
   }
