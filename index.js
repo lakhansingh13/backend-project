@@ -3,6 +3,10 @@ require('dotenv').config();
 const express = require('express');
 const app = express();
 
+// ===== DAY 10: Socket Setup =====
+const http = require('http');
+const { Server } = require('socket.io');
+
 // =====Day 8 : Data Relationship ====
 const Post = require('./models/Post');
 
@@ -14,16 +18,72 @@ const User = require('./models/User');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
+// ===== DAY 6: Auth Middleware =====
+const auth = require('./middleware/auth');
+
 const port = process.env.PORT || 5000;
 const apiKey = process.env.API_KEY;
 
+// ===== DAY 10: Wrap Express =====
+const server = http.createServer(app);
+
+// ===== DAY 10: Socket Init =====
+const io = new Server(server, {
+  cors: { origin: "*" }
+});
+
+// ===== DAY 10: Socket Authentication =====
+io.use((socket, next) => {
+  try {
+    const token = socket.handshake.auth.token;
+
+    // Check if token exists
+    if (!token) {
+      return next(new Error("No token provided"));
+    }
+
+    // Verify token
+    const decoded = jwt.verify(token, "my_secret_key");
+
+    // Attach user info
+    socket.user = decoded;
+
+    next(); // allow connection
+  } catch (err) {
+    next(new Error("Unauthorized"));
+  }
+});
+
+/* ========== DAY 10: SOCKET LOGIC ========== */
+
+io.on('connection', (socket) => {
+  console.log("User connected:", socket.id);
+
+  // Join room
+  socket.on('join_room', (room) => {
+    socket.join(room);
+    console.log(`User joined room: ${room}`);
+  });
+
+  // Send message to room
+  socket.on('send_message', (data) => {
+    console.log("Message:", data);
+
+    io.to(data.room).emit('receive_message', data.message);
+  });
+
+  socket.on('disconnect', () => {
+    console.log("User disconnected");
+  });
+});
+
 /* ========== DAY 3: Middleware ========== */
+
 app.use((req, res, next) => {
   console.log(`${req.method} request to ${req.url}`);
   next();
 });
 
-// JSON Middleware
 app.use(express.json());
 
 // Connect DB
@@ -31,12 +91,10 @@ connectDB();
 
 /* ========== DAY 2: Basic Routes ========== */
 
-// Home
 app.get('/', (req, res) => {
   res.send('Server running correctly');
 });
 
-// Admin
 app.get('/admin', (req, res) => {
   res.send('<h1>Welcome Admin</h1>');
 });
@@ -49,12 +107,10 @@ let users = [
   { id: 3, name: "Charlie", status: "Offline" }
 ];
 
-// About
 app.get('/about', (req, res) => {
   res.send('This is the About API — Backend logic is active.');
 });
 
-// Single user
 app.get('/user', (req, res) => {
   res.json({
     name: "John",
@@ -63,14 +119,12 @@ app.get('/user', (req, res) => {
   });
 });
 
-// Users API
 app.get('/api/users', (req, res) => {
   res.json(users);
 });
 
 /* ========== DAY 4: Environment + Advanced APIs ========== */
 
-// Status route
 app.get('/status', (req, res) => {
   res.json({
     message: "System Online",
@@ -79,11 +133,9 @@ app.get('/status', (req, res) => {
   });
 });
 
-// Controller route
 const userController = require('./controllers/userController');
 app.get('/api/users-controller', userController.getUsers);
 
-// Basic Register
 app.post('/api/register', (req, res) => {
   const { username, password } = req.body;
 
@@ -97,9 +149,8 @@ app.post('/api/register', (req, res) => {
   });
 });
 
-/* ========== DAY 5: DATABASE (MongoDB) ========== */
+/* ========== DAY 5: DATABASE ========== */
 
-// Save user to DB
 app.post('/register-db', async (req, res) => {
   try {
     const newUser = new User(req.body);
@@ -116,19 +167,16 @@ app.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Check user
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(400).json({ msg: "User does not exist" });
     }
 
-    // Compare password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ msg: "Invalid credentials" });
     }
 
-    // Create token
     const token = jwt.sign(
       { id: user._id },
       "my_secret_key",
@@ -150,20 +198,18 @@ app.post('/login', async (req, res) => {
 
 /* ========== DAY 6: Protected Route ========== */
 
-const auth = require('./middleware/auth');
-
 app.get('/dashboard', auth, (req, res) => {
   res.send("Welcome to the Private Dashboard");
 });
 
-/* ========== DAY 8: Create Post (with User link) ========== */
+/* ========== DAY 8: Create Post ========== */
 
 app.post('/api/posts', auth, async (req, res) => {
   try {
     const newPost = new Post({
       title: req.body.title,
       content: req.body.content,
-      author: req.user.id // from JWT
+      author: req.user.id
     });
 
     const post = await newPost.save();
@@ -174,35 +220,19 @@ app.post('/api/posts', auth, async (req, res) => {
   }
 });
 
-/* ========== DAY 8: Get Posts with Author Details ========== */
-
-/*app.get('/api/posts', async (req, res) => {
-  try {
-    const posts = await Post.find().populate('author', ['username', 'email']);
-    res.json(posts);
-  } catch (err) {
-    res.status(500).send('Server Error');
-  }
-}); */
-
-/* ========== DAY 9: Updated Paginated Posts ========== */
+/* ========== DAY 9: Paginated Posts ========== */
 
 app.get('/api/posts', async (req, res) => {
   try {
-    // Step 1: Get page & limit from URL
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 2;
-
-    // Step 2: Calculate skip
     const skip = (page - 1) * limit;
 
-    // Step 3: Fetch data
     const posts = await Post.find()
       .populate('author', ['username', 'email'])
       .skip(skip)
       .limit(limit);
 
-    // Step 4: Send response
     res.json(posts);
 
   } catch (err) {
@@ -212,6 +242,6 @@ app.get('/api/posts', async (req, res) => {
 
 /* ========== SERVER START ========== */
 
-app.listen(port, () => {
+server.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
