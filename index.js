@@ -7,6 +7,8 @@ const app = express();
 const http = require('http');
 const { Server } = require('socket.io');
 
+const { Worker } = require('worker_threads'); // ✅ Day 11
+
 // =====Day 8 : Data Relationship ====
 const Post = require('./models/Post');
 
@@ -238,6 +240,50 @@ app.get('/api/posts', async (req, res) => {
   } catch (err) {
     res.status(500).send('Server Error');
   }
+});
+
+/* ========== DAY 11: BLOCKING TASK (MAIN THREAD) ========== */
+
+// ❌ This route runs heavy computation on MAIN THREAD
+// Result: Server becomes unresponsive (FREEZE)
+
+app.get('/api/block', (req, res) => {
+  console.log("Block task started at:", new Date().toLocaleTimeString());
+
+  let result = 0;
+
+  // Heavy loop (CPU intensive task)
+  for (let i = 0; i < 2000000000; i++) {
+    result += i;
+  }
+
+  console.log("Block task completed at:", new Date().toLocaleTimeString());
+
+  // Response after completion
+  res.send("Blocking task done");
+});
+
+/* ========== DAY 11 WORKER THREAD ========== */
+
+app.get('/api/heavy-task', (req, res) => {
+  console.log("Heavy task started at:", new Date().toLocaleTimeString());
+
+  const worker = new Worker('./worker.js', {
+    workerData: { iterations: 100000000 }
+  });
+
+  worker.on('message', (result) => {
+    console.log("Heavy task completed at:", new Date().toLocaleTimeString());
+
+    res.json({
+      success: true,
+      result
+    });
+  });
+
+  worker.on('error', (err) => {
+    res.status(500).json({ error: err.message });
+  });
 });
 
 /* ========== SERVER START ========== */
