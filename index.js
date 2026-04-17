@@ -8,7 +8,7 @@ const redis = require('redis');
 
 // Create Redis client
 const client = redis.createClient({
-  url: "redis://default:8z52IcbkrVFMmSrqE5OBhl9Fd1l2e38z@redis-19306.crce300.ap-south-1-2.ec2.cloud.redislabs.com:19306"
+  url:  process.env.REDIS_URL
 });
 
 // Connect Redis
