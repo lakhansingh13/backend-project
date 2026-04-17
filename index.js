@@ -2,6 +2,19 @@ require('dotenv').config();
 
 const express = require('express');
 const app = express();
+  
+// ==== Day 12: Redis Setup =====
+const redis = require('redis');
+
+// Create Redis client
+const client = redis.createClient({
+  url: "redis://default:8z52IcbkrVFMmSrqE5OBhl9Fd1l2e38z@redis-19306.crce300.ap-south-1-2.ec2.cloud.redislabs.com:19306"
+});
+
+// Connect Redis
+client.connect()
+  .then(() => console.log("Redis connected"))
+  .catch(err => console.log(err));
 
 // ===== DAY 10: Socket Setup =====
 const http = require('http');
@@ -284,6 +297,57 @@ app.get('/api/heavy-task', (req, res) => {
   worker.on('error', (err) => {
     res.status(500).json({ error: err.message });
   });
+});
+
+/* ========== DAY 12: CACHE-ASIDE (REDIS) ========== */
+
+app.get('/api/posts/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // 1️⃣ Check Redis (Cache)
+    const cachedPost = await client.get(id);
+
+    if (cachedPost) {
+      console.log("Cache HIT 🔥");
+      return res.json(JSON.parse(cachedPost));
+    }
+
+    // 2️⃣ Fetch from MongoDB
+    const post = await Post.findById(id);
+
+    if (!post) {
+      return res.status(404).send("Post not found");
+    }
+
+    // 3️⃣ Save to Redis (TTL = 1 hour)
+    await client.setEx(id, 3600, JSON.stringify(post));
+
+    console.log("Cache MISS ❌ → Data from DB");
+
+    res.json(post);
+
+  } catch (err) {
+    res.status(500).send("Server Error");
+  }
+});
+
+/* ========== DAY 12: CACHE INVALIDATION ========== */
+
+app.put('/api/posts/:id', async (req, res) => {
+  try {
+    const post = await Post.findByIdAndUpdate(req.params.id, req.body, { new: true });
+
+    // Delete old cache
+    await client.del(req.params.id);
+
+    console.log("Cache cleared for updated post");
+
+    res.json(post);
+
+  } catch (err) {
+    res.status(500).send("Server Error");
+  }
 });
 
 /* ========== SERVER START ========== */
