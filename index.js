@@ -28,7 +28,6 @@ const loginLimiter = rateLimit({
 });
 
 /* ================= DAY 12: REDIS ================= */
-
 const redis = require('redis');
 
 const client = redis.createClient({
@@ -37,7 +36,7 @@ const client = redis.createClient({
 
 client.connect()
   .then(() => console.log("Redis connected"))
-  .catch(err => console.log(err));
+  .catch(err => console.log(err));   
 
 /* ================= DAY 10: SOCKET ================= */
 
@@ -66,6 +65,10 @@ const auth = require('./middleware/auth');
 /* ================= MIDDLEWARE ================= */
 
 app.use(express.json());
+
+app.get('/api/test', (req, res) => {
+  res.json({ message: "API working 🚀" });
+}); 
 
 // Apply limiter AFTER express
 app.use('/api/', apiLimiter);
@@ -151,6 +154,8 @@ app.get('/api/posts/:id', async (req, res) => {
     res.status(500).send("Server error");
   }
 });
+
+
 
 /* ================= SERVER ================= */
 
