@@ -8,4 +8,4 @@ for (let i = 0; i < workerData.iterations; i++) {
 }
 
 // Send result back
-parentPort.postMessage(result);
+parentPort.postMessage(result); 
