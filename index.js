@@ -1,17 +1,21 @@
-require('dotenv').config();
+// 🔥 IMPORTANT: don't load .env in test (prevents NODE_ENV override)
+if (process.env.NODE_ENV !== 'test') {
+  require('dotenv').config();
+}
 
 const express = require('express');
 const app = express();
 
-/* ================= DAY 15: SECURITY ================= */
+/* ================= DAY 20: SWAGGER ================= */
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpec = require('./swagger_config');
 
+/* ================= DAY 15: SECURITY ================= */
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 
-// Helmet (security headers)
 app.use(helmet());
 
-// Global API limiter
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
@@ -20,7 +24,6 @@ const apiLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Strict login limiter
 const loginLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 5,
@@ -29,20 +32,15 @@ const loginLimiter = rateLimit({
 
 /* ================= DAY 12: REDIS ================= */
 const redis = require('redis');
-
 const client = redis.createClient({
   url: process.env.REDIS_URL
 });
 
-client.connect()
-  .then(() => console.log("Redis connected"))
-  .catch(err => console.log(err));   
+client.on('error', (err) => console.log('Redis Client Error', err));
 
 /* ================= DAY 10: SOCKET ================= */
-
 const http = require('http');
 const { Server } = require('socket.io');
-const { Worker } = require('worker_threads');
 
 const server = http.createServer(app);
 
@@ -51,66 +49,43 @@ const io = new Server(server, {
 });
 
 /* ================= DB + MODELS ================= */
-
 const connectDB = require('./db');
 const User = require('./models/User');
 const Post = require('./models/Post');
 
 /* ================= AUTH ================= */
-
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const auth = require('./middleware/auth');
 
 /* ================= MIDDLEWARE ================= */
-
 app.use(express.json());
 
-app.get('/api/test', (req, res) => {
-  res.json({ message: "API working 🚀" });
-}); 
+/* ================= SWAGGER ================= */
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-// Apply limiter AFTER express
+/* ================= RATE LIMIT ================= */
 app.use('/api/', apiLimiter);
 
-// Connect DB
-connectDB();
-
-/* ================= SOCKET AUTH ================= */
-
-io.use((socket, next) => {
-  try {
-    const token = socket.handshake.auth.token;
-    if (!token) return next(new Error("No token"));
-
-    const decoded = jwt.verify(token, "my_secret_key");
-    socket.user = decoded;
-
-    next();
-  } catch (err) {
-    next(new Error("Unauthorized"));
-  }
+/**
+ * @swagger
+ * /api/test:
+ *   get:
+ *     summary: Test API endpoint
+ *     description: Returns a simple message to verify API is working
+ *     responses:
+ *       200:
+ *         description: Successful response
+ */
+app.get('/api/test', apiLimiter, (req, res) => {
+  res.json({ message: "API working 🚀" });
 });
 
-/* ================= SOCKET LOGIC ================= */
-
-io.on('connection', (socket) => {
-  socket.on('join_room', (room) => socket.join(room));
-
-  socket.on('send_message', (data) => {
-    io.to(data.room).emit('receive_message', data.message);
-  });
-});
-
-/* ================= BASIC ROUTES ================= */
-
+/* ================= BASIC ROUTE ================= */
 app.get('/', (req, res) => {
   res.send('Server running correctly');
 });
 
-/* ================= LOGIN (IMPORTANT 🔐) ================= */
-
-// Apply strict limiter BEFORE route
+/* ================= LOGIN ================= */
 app.post('/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -130,8 +105,7 @@ app.post('/login', loginLimiter, async (req, res) => {
   }
 });
 
-/* ================= POSTS ================= */
-
+/* ================= POSTS (REDIS CACHE) ================= */
 app.get('/api/posts/:id', async (req, res) => {
   try {
     const cached = await client.get(req.params.id);
@@ -155,12 +129,32 @@ app.get('/api/posts/:id', async (req, res) => {
   }
 });
 
+/* ================= SOCKET ================= */
+io.on('connection', (socket) => {
+  socket.on('join_room', (room) => socket.join(room));
 
-
-/* ================= SERVER ================= */
-
-const port = process.env.PORT || 5000;
-
-server.listen(port, () => {
-  console.log(`Server running on port ${port}`);
+  socket.on('send_message', (data) => {
+    io.to(data.room).emit('receive_message', data.message);
+  });
 });
+
+/* ================= SERVER START ================= */
+const port = process.env.PORT || 3000;
+
+async function startServer() {
+  await connectDB();
+  await client.connect();
+  console.log("Redis connected");
+
+  server.listen(port, () => {
+    console.log(`Server running on port ${port}`);
+  });
+}
+
+/* 🔥 FINAL SAFE START (never runs in test) */
+if (process.env.NODE_ENV !== 'test') {
+  startServer();
+}
+
+/* ================= EXPORT ================= */
+module.exports = app;
